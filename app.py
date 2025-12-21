@@ -3,7 +3,8 @@ import joblib
 import pandas as pd
 
 st.title("Solar Radiation Prediction")
-
+knn_path = "knn.pkl"  # Path to the trained KNN.pkl model
+scaler_path = "Modelsscaler.pkl"   # Path to the scaler used during model training
 # Attempt to load scaler and model, show error in UI if loading fails
 try:
     scaler = joblib.load(scaler_path)
