@@ -31,7 +31,6 @@ with col2:
 
 # Additional (meta) inputs that are not part of the original model features
 required_radiation = st.number_input("Required Radiation (W/m²)", min_value=0.0, max_value=2000.0, value=800.0)
-#panel_type = st.selectbox("Panel Type", ["Monocrystalline", "Polycrystalline", "Thin-Film", "BIPV"])
 panel_efficiency = st.number_input("Panel Efficiency (%)", min_value=0.0, max_value=100.0, value=18.0)
 
 # Build feature dataframe for the model (keep only the features the model expects)
@@ -50,7 +49,6 @@ df = pd.DataFrame(features, index=[0])
 # through the scaler/model unless the model was trained with them)
 meta = {
     "Required Radiation (W/m²)": required_radiation,
-    "Panel Type": panel_type,
     "Panel Efficiency (%)": panel_efficiency
 }
 
