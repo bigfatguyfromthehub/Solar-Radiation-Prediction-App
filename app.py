@@ -80,7 +80,7 @@ if lat is not None and lon is not None:
 else:
        print("Weather data and UVI data not fetched due to invalid coordinates.")
 # Default values in case API call fails
-default_humidity = 46.17
+default_humidity = 46
 default_pressure = 986
 default_temperature = 29.6
 default_wind_speed = 2.9
@@ -102,7 +102,7 @@ with col1:
     hour = st.number_input("Hour", min_value=0, max_value=23, value=default_hour)
     temperature = st.number_input("Temperature (°C)", min_value=-50.0, max_value=60.0, value=default_temperature)
     dew_point = st.number_input("Dew Point (°C)", min_value=-50.0, max_value=40.0, value=default_dew_point)
-    relative_humidity = st.number_input("Relative Humidity (%)", min_value=0.0, max_value=100.0, value=default_humidity)
+    relative_humidity = st.number_input("Relative Humidity (%)", min_value=0, max_value=100, value=default_humidity)
 
 with col2:
     surface_albedo = st.number_input("Surface Albedo", min_value=0.0, max_value=1.0, value=0.15)
