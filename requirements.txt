@@ -1,7 +1,6 @@
 joblib
 pandas
 scikit-learn
-json
 requests
 datetime
 streamlit
