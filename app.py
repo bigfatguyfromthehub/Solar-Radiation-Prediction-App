@@ -1,6 +1,9 @@
 import streamlit as st
 import joblib
 import pandas as pd
+import requests
+import json
+from datetime import datetime
 
 st.title("Solar Radiation Prediction")
 knn_path = "knn.pkl"  # Path to the trained KNN.pkl model
@@ -14,15 +17,92 @@ except Exception as e:
     scaler = None
     knn = None
 
+lat=37.45980962438753
+lon=-122.1511311602308
+
+city = st.text_input("City", value="Menlo Park")
+def get_coordinates(city_name):
+       api_key = "4e514b49d73362c5d739f05fea7f27cd" # This API key is for geocoding
+       url = f"http://api.openweathermap.org/geo/1.0/direct?q={city_name}&limit=1&appid={api_key}"
+       try:
+              response = requests.get(url).json()
+
+              # Check if the response is a list and contains elements
+              if isinstance(response, list) and len(response) > 0:
+                     lat = response[0]['lat']
+                     lon = response[0]['lon']
+                     print(f"City: {city_name}") # Using city_name parameter
+                     print(f"Latitude: {lat}, Longitude: {lon}")
+                     return lat, lon
+              else:
+                     # Handle cases where response is an empty list or an error dictionary
+                     print(f"City '{city_name}' not found!")
+                     if isinstance(response, dict) and 'message' in response:
+                            print(f"API Error from geocoding: {response['message']}")
+                     return None, None
+       except requests.exceptions.RequestException as e:
+              print(f"Error making geocoding API request: {e}")
+              return None, None
+       except json.JSONDecodeError:
+              print("Error decoding JSON response from geocoding API.")
+              return None, None
+       except Exception as e:
+              print(f"An unexpected error occurred in get_coordinates: {e}")
+              return None, None
+
+lat, lon = get_coordinates(city)
+
+# Ensure these exist even if coordinates lookup fails
+weather_data = None
+uvi_data = None
+
+# Only proceed if valid coordinates were obtained
+if lat is not None and lon is not None:
+       # Fetch weather data from OpenWeatherMap API
+       # Note: The appid for weather data (4e514b49d73362c5d739f05fea7f27cd) is different
+       weather_api_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid=4e514b49d73362c5d739f05fea7f27cd"
+       weather_data = None
+       uvi_data = None
+       uvi_url = f"https://api.openweathermap.org/data/2.5/uvi?lat={lat}&lon={lon}&appid=4e514b49d73362c5d739f05fea7f27cd" # The original code defines uvi_url but doesn't use it.
+
+       try:
+              response = requests.get(weather_api_url)
+              if response.status_code == 200:
+                     weather_data = response.json()
+                     print(weather_data)
+              else:
+                     print(f"Failed to fetch weather data. Status code: {response.status_code}")
+                     if response.text:
+                            print(f"Response content: {response.text}")
+       except Exception as e:
+              weather_data = None
+              print(f"An error occurred while fetching weather data: {e}")
+else:
+       print("Weather data and UVI data not fetched due to invalid coordinates.")
+# Default values in case API call fails
+default_humidity = 46.17
+default_pressure = 986
+default_temperature = 29.6
+default_wind_speed = 2.9
+if weather_data:
+    st.write("Fetched current weather data for Fremont, CA")
+    default_humidity = weather_data.get('main', {}).get('humidity', default_humidity)
+    default_pressure = weather_data.get('main', {}).get('pressure', default_pressure)
+    # Convert Kelvin to Fahrenheit for temperature
+    kelvin_temp = weather_data.get('main', {}).get('temp', 302.15)
+    default_temperature = round((kelvin_temp - 273.15))
+    default_wind_speed = round(weather_data.get('wind', {}).get('speed', default_wind_speed))
+default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
+default_hour = datetime.now().hour
 # Create input fields for user input
 st.subheader("Enter Features")
 col1, col2 = st.columns(2)
 
 with col1:
-    hour = st.number_input("Hour", min_value=0, max_value=23, value=16)
-    temperature = st.number_input("Temperature (°C)", min_value=-50.0, max_value=60.0, value=29.6)
-    dew_point = st.number_input("Dew Point (°C)", min_value=-50.0, max_value=40.0, value=16.8)
-    relative_humidity = st.number_input("Relative Humidity (%)", min_value=0.0, max_value=100.0, value=46.17)
+    hour = st.number_input("Hour", min_value=0, max_value=23, value=default_hour)
+    temperature = st.number_input("Temperature (°C)", min_value=-50.0, max_value=60.0, value=default_temperature)
+    dew_point = st.number_input("Dew Point (°C)", min_value=-50.0, max_value=40.0, value=default_dew_point)
+    relative_humidity = st.number_input("Relative Humidity (%)", min_value=0.0, max_value=100.0, value=default_humidity)
 
 with col2:
     surface_albedo = st.number_input("Surface Albedo", min_value=0.0, max_value=1.0, value=0.15)
