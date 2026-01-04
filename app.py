@@ -57,35 +57,39 @@ weather_data = None
 uvi_data = None
 
 # Only proceed if valid coordinates were obtained
-if lat is not None and lon is not None:
-       # Fetch weather data from OpenWeatherMap API
-       # Note: The appid for weather data (4e514b49d73362c5d739f05fea7f27cd) is different
-       weather_api_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid=4e514b49d73362c5d739f05fea7f27cd"
-       weather_data = None
-       uvi_data = None
-       uvi_url = f"https://api.openweathermap.org/data/2.5/uvi?lat={lat}&lon={lon}&appid=4e514b49d73362c5d739f05fea7f27cd" # The original code defines uvi_url but doesn't use it.
+try:
+    if lat is not None and lon is not None:
+        # Fetch weather data from OpenWeatherMap API
+        # Note: The appid for weather data (4e514b49d73362c5d739f05fea7f27cd) is different
+        weather_api_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid=4e514b49d73362c5d739f05fea7f27cd"
+        weather_data = None
+        uvi_data = None
+        uvi_url = f"https://api.openweathermap.org/data/2.5/uvi?lat={lat}&lon={lon}&appid=4e514b49d73362c5d739f05fea7f27cd" # The original code defines uvi_url but doesn't use it.
 
-       try:
-              response = requests.get(weather_api_url)
-              if response.status_code == 200:
-                     weather_data = response.json()
-                     print(weather_data)
-              else:
-                     print(f"Failed to fetch weather data. Status code: {response.status_code}")
-                     if response.text:
-                            print(f"Response content: {response.text}")
-       except Exception as e:
-              weather_data = None
-              print(f"An error occurred while fetching weather data: {e}")
-else:
-       print("Weather data and UVI data not fetched due to invalid coordinates.")
+        try:
+                response = requests.get(weather_api_url)
+                if response.status_code == 200:
+                        weather_data = response.json()
+                        print(weather_data)
+                else:
+                        print(f"Failed to fetch weather data. Status code: {response.status_code}")
+                        if response.text:
+                                print(f"Response content: {response.text}")
+        except Exception as e:
+                weather_data = None
+                print(f"An error occurred while fetching weather data: {e}")
+    else:
+        print("Weather data and UVI data not fetched due to invalid coordinates.")
+    st.write(f"Fetched current weather data for {city}")
+except Exception as e:
+    st.write("Using the default weather data due to an error:", e)
+
 # Default values in case API call fails
 default_humidity = 46
 default_pressure = 986
 default_temperature = 29.6
 default_wind_speed = 2.9
 if weather_data:
-    st.write("Fetched current weather data for", city)
     default_humidity = weather_data.get('main', {}).get('humidity', default_humidity)
     default_pressure = weather_data.get('main', {}).get('pressure', default_pressure)
     # Convert Kelvin to Fahrenheit for temperature
