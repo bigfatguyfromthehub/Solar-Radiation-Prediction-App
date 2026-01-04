@@ -90,8 +90,8 @@ if weather_data:
     default_pressure = weather_data.get('main', {}).get('pressure', default_pressure)
     # Convert Kelvin to Fahrenheit for temperature
     kelvin_temp = weather_data.get('main', {}).get('temp', 302.15)
-    default_temperature = round((kelvin_temp - 273.15))
-    default_wind_speed = round(weather_data.get('wind', {}).get('speed', default_wind_speed))
+    default_temperature = kelvin_temp - 273.15
+    default_wind_speed = weather_data.get('wind', {}).get('speed', default_wind_speed)
 default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
 default_hour = datetime.now().hour
 # Create input fields for user input
