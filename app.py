@@ -85,7 +85,7 @@ default_pressure = 986
 default_temperature = 29.6
 default_wind_speed = 2.9
 if weather_data:
-    st.write("Fetched current weather data for Fremont, CA")
+    st.write("Fetched current weather data for", city)
     default_humidity = weather_data.get('main', {}).get('humidity', default_humidity)
     default_pressure = weather_data.get('main', {}).get('pressure', default_pressure)
     # Convert Kelvin to Fahrenheit for temperature
