@@ -115,6 +115,8 @@ with col2:
     wind_speed = st.number_input("Wind Speed (m/s)", min_value=0.0, max_value=50.0, value=2.9)
 
 # Build feature dataframe for the model (keep only the features the model expects)
+# IMPORTANT: Feature order must match what the model was trained on
+feature_names = ['Hour', 'Temperature', 'Dew Point', 'Relative Humidity', 'Surface Albedo', 'Pressure', 'Wind Speed']
 features = {
     "Hour": hour,
     "Temperature": temperature,
@@ -126,9 +128,9 @@ features = {
 }
 df = pd.DataFrame(features, index=[0])
 
-# Placeholder for last prediction (GHI) so we can use it for panel calculations
-predicted_ghi = None
-
+# Use session state to persist the predicted GHI across interactions
+if "predicted_ghi" not in st.session_state:
+    st.session_state.predicted_ghi = None
 
 # Run prediction only when user clicks the button
 if st.button("Predict"):
@@ -136,16 +138,25 @@ if st.button("Predict"):
         st.error("Model or scaler not loaded. Ensure `scaler_path` and `knn_path` are defined and files exist.")
     else:
         try:
-            scaled_data = scaler.transform(df)
-            scaled_data_df = pd.DataFrame(scaled_data, columns=features.keys())
+            # Scale the features using the correct feature order
+            scaled_data = scaler.transform(df[feature_names])
+            # Create dataframe with proper feature names for prediction
+            scaled_data_df = pd.DataFrame(scaled_data, columns=feature_names)
             prediction = knn.predict(scaled_data_df)
-            st.success(f"GHI (W/m²): {prediction[0]}")
-            predicted_ghi = float(prediction[0])
+            st.session_state.predicted_ghi = float(prediction[0])
+            st.success(f"GHI (W/m²): {st.session_state.predicted_ghi:.2f}")
             st.markdown("**Input meta-data**")
             # meta will be displayed after user-provided meta inputs below
         except Exception as e:
             st.error(f"Prediction failed: {e}")
 st.write("## Now let's calculate the required panel surface area based on your inputs:")
+
+# Check if user has made a prediction
+if st.session_state.predicted_ghi is None:
+    st.info("👆 Please click 'Predict' above to calculate GHI before proceeding with panel calculations.")
+else:
+    st.success(f"✓ Using predicted GHI: {st.session_state.predicted_ghi:.2f} W/m²")
+
 # Additional (meta) inputs that are not part of the original model features
 # Ask for required total power (watts) rather than a radiation value
 required_power = st.number_input("Required Power (W)", min_value=0.0, max_value=1000000.0, value=800.0)
@@ -191,18 +202,25 @@ meta = {
 st.markdown("**Input meta-data**")
 st.write(meta)
 
-# Determine GHI to use for power calculation: prefer model prediction, otherwise ask user
-if 'predicted_ghi' in globals() and predicted_ghi is not None:
-    st.write(f"Predicted GHI (used for calculation): {predicted_ghi:.2f} W/m²")
-    ghi_value = predicted_ghi
+# Override GHI if user wants to test different scenarios (optional)
+override_ghi = st.checkbox("Override predicted GHI for testing different scenarios?")
+if override_ghi:
+    ghi_value = st.number_input("Override GHI (W/m²)", min_value=0.0, value=800.0)
 else:
-    ghi_value = st.number_input("Expected GHI (W/m²) to use for calculation", min_value=0.0, value=800.0)
+    ghi_value = st.session_state.predicted_ghi if st.session_state.predicted_ghi is not None else None
+
+st.subheader("Annual Energy Projections")
+# Average peak sun hours per day (approximate for different locations, 4-6 hours typical)
+peak_sun_hours = st.slider("Average Peak Sun Hours per Day", min_value=2.0, max_value=8.0, value=5.0, 
+                            help="Typical solar insolation hours. Menlo Park avg: ~5 hours/day")
 
 if st.button("Calculate Panels"):
-    try:
-        if ghi_value <= 0:
-            st.error("GHI used for calculation must be greater than 0.")
-        else:
+    if st.session_state.predicted_ghi is None and not override_ghi:
+        st.error("❌ Please click 'Predict' first to calculate GHI, or check the override option to test a manual value.")
+    elif ghi_value is None or ghi_value <= 0:
+        st.error("GHI used for calculation must be greater than 0.")
+    else:
+        try:
             # Instantaneous power produced by one panel at given GHI
             power_per_panel = ghi_value * panel_area * (panel_efficiency / 100.0) * derate
             if power_per_panel <= 0:
@@ -216,5 +234,29 @@ if st.button("Calculate Panels"):
                 st.write(f"Estimated instantaneous power from system: {estimated_system_power:.2f} W")
                 st.write(f"Total panel area required: {total_panel_area:.2f} m²")
                 st.write(f"Using panel nominal power ~ {nominal_power} W each, {ceil(required_power/nominal_power)} panels (approx) would be needed to meet required power at STC ratings.")
-    except Exception as e:
-        st.error(f"Panel calculation failed: {e}")
+                
+                # Calculate annual energy generation
+                st.divider()
+                st.subheader("Annual Energy Generation")
+                
+                # Energy per panel per year (kWh)
+                # Formula: Power (kW) * Peak Sun Hours * 365 days
+                energy_per_panel_year = (power_per_panel / 1000) * peak_sun_hours * 365
+                total_system_energy = energy_per_panel_year * panels_needed
+                
+                st.metric("Annual Energy from System", f"{total_system_energy:,.0f} kWh/year")
+                st.write(f"**Breakdown:**")
+                st.write(f"- Power per panel (at {ghi_value:.0f} W/m²): {power_per_panel:.2f} W")
+                st.write(f"- Annual energy per panel: {energy_per_panel_year:,.0f} kWh/year")
+                st.write(f"- Total panels: {panels_needed}")
+                st.write(f"- Total system annual energy: {total_system_energy:,.0f} kWh/year")
+                
+                # Estimate annual cost savings (assuming $0.12/kWh average electricity rate)
+                avg_electricity_rate = st.number_input("Local electricity rate ($/kWh)", min_value=0.0, value=0.12)
+                annual_savings = total_system_energy * avg_electricity_rate
+                st.write(f"**Estimated Annual Savings: ${annual_savings:,.2f}** (at ${avg_electricity_rate}/kWh)")
+                
+        except Exception as e:
+            st.error(f"Panel calculation failed: {e}")
+#Create different pages. Likely need a home page, discussing the title of the project, describing the project, discusing the objective, and describing how to use the calculator and what it does. Homepage should be the default, when loading into the app.
+#Get the average for the whole year.
