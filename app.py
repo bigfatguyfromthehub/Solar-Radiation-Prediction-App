@@ -8,10 +8,10 @@ from math import ceil
 
 st.title("Solar Radiation Prediction")
 knn_path = "knn.pkl"  # Path to the trained KNN.pkl model
-scaler_path = "Modelsscaler.pkl"   # Path to the scaler used during model training
+#scaler_path = "Modelsscaler.pkl"   # Path to the scaler used during model training
 # Attempt to load scaler and model, show error in UI if loading fails
 try:
-    scaler = joblib.load(scaler_path)
+    #scaler = joblib.load(scaler_path)
     knn = joblib.load(knn_path)
 except Exception as e:
     st.error(f"Failed to load model or scaler: {e}")
@@ -134,15 +134,15 @@ if "predicted_ghi" not in st.session_state:
 
 # Run prediction only when user clicks the button
 if st.button("Predict"):
-    if scaler is None or knn is None:
-        st.error("Model or scaler not loaded. Ensure `scaler_path` and `knn_path` are defined and files exist.")
+    if knn is None:
+        st.error("Model not loaded. Ensure `knn_path` is defined and files exist.")
     else:
         try:
             # Scale the features using the correct feature order
-            scaled_data = scaler.transform(df[feature_names])
-            # Create dataframe with proper feature names for prediction
-            scaled_data_df = pd.DataFrame(scaled_data, columns=feature_names)
-            prediction = knn.predict(scaled_data_df)
+            #scaled_data = scaler.transform(df[feature_names])
+            # Predict using the scaled numpy array directly
+            scaled_data = df[feature_names]  # Assuming model can handle unscaled data for now
+            prediction = knn.predict(scaled_data)
             st.session_state.predicted_ghi = float(prediction[0])
             st.success(f"GHI (W/m²): {st.session_state.predicted_ghi:.2f}")
             st.markdown("**Input meta-data**")
