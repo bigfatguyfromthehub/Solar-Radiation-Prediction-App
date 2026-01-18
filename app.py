@@ -9,7 +9,6 @@ from math import ceil
 # Configure page
 st.set_page_config(
     page_title="Solar Radiation Prediction App",
-    page_icon="☀️",
     layout="wide"
 )
 
@@ -53,7 +52,7 @@ def fetch_weather_data(lat, lon, city_name):
 
 # ============== PAGE: HOME ==============
 def page_home():
-    st.title("☀️ Solar Radiation Prediction App")
+    st.title("Solar Radiation Prediction App")
     
     st.markdown("---")
     st.header("Welcome to the Solar Radiation Prediction Application")
@@ -62,13 +61,13 @@ def page_home():
     
     with col1:
         st.markdown("""
-        ### 📋 Project Overview
+        ### Project Overview
         
         The **Solar Radiation Prediction App** is designed to help you estimate solar radiation levels 
         and calculate the solar panel requirements needed to meet your energy needs. This tool combines 
         weather data and machine learning predictions to provide accurate solar energy assessments.
         
-        ### 🎯 Objectives
+        ### Objectives
         
         1. **Predict Solar Radiation**: Use a KNN machine learning model to predict Global Horizontal 
            Irradiance (GHI) based on weather parameters
@@ -77,7 +76,7 @@ def page_home():
         3. **Estimate Energy Generation**: Project annual energy production and potential cost savings
         4. **Location-Based Analysis**: Get weather data automatically for any city worldwide
         
-        ### 🚀 How to Use the Calculator
+        ### How to Use the Calculator
         
         **Step 1: Navigate to the Prediction Page**
         - Go to the "Prediction" page using the sidebar menu
@@ -88,7 +87,7 @@ def page_home():
         
         **Step 3: Predict Solar Radiation**
         - Review and adjust weather parameters (temperature, humidity, pressure, wind speed, etc.)
-        - Click "Predict" to calculate the GHI (Global Horizontal Irradiance) using our ML model
+        - Click "Predict GHI" to calculate the GHI (Global Horizontal Irradiance) using our ML model
         
         **Step 4: Calculate Panel Requirements**
         - Enter your required power output in Watts
@@ -103,7 +102,7 @@ def page_home():
     
     with col2:
         st.info("""
-        ### ⚡ Key Metrics
+        ### Key Metrics
         
         **What We Calculate:**
         - Global Horizontal Irradiance (GHI)
@@ -123,7 +122,7 @@ def page_home():
         """)
     
     st.markdown("---")
-    st.subheader("📊 What is Solar Radiation?")
+    st.subheader("What is Solar Radiation?")
     st.markdown("""
     **Global Horizontal Irradiance (GHI)** is the total solar radiation received on a horizontal surface. 
     It's measured in watts per square meter (W/m²) and varies based on:
@@ -138,7 +137,7 @@ def page_home():
     """)
     
     st.markdown("---")
-    st.subheader("🔧 About Solar Panel Calculations")
+    st.subheader("About Solar Panel Calculations")
     st.markdown("""
     The app calculates panel requirements using the formula:
     
@@ -153,7 +152,7 @@ def page_home():
     """)
     
     st.markdown("---")
-    st.subheader("📍 Common Peak Sun Hours by Location")
+    st.subheader("Common Peak Sun Hours by Location")
     peak_hours_data = {
         "Location": ["Northern California (Menlo Park)", "Southern California (Los Angeles)", 
                      "Arizona (Phoenix)", "Texas (Houston)", "Florida (Miami)", "New York (NYC)"],
@@ -164,7 +163,7 @@ def page_home():
 
 # ============== PAGE: PREDICTION ==============
 def page_prediction():
-    st.title("📈 Solar Radiation Prediction")
+    st.title("Solar Radiation Prediction")
     
     # Input city and fetch weather
     city = st.text_input("Enter City Name", value="Menlo Park", key="city_input")
@@ -175,7 +174,7 @@ def page_prediction():
         st.warning(f"Could not find coordinates for '{city}'. Using default values.")
         lat, lon = 37.45980962438753, -122.1511311602308
     else:
-        st.success(f"✓ Found {city} (Lat: {lat:.2f}, Lon: {lon:.2f})")
+        st.success(f"Found {city} (Lat: {lat:.2f}, Lon: {lon:.2f})")
     
     # Fetch weather data
     weather_data = fetch_weather_data(lat, lon, city)
@@ -183,7 +182,7 @@ def page_prediction():
     # Set defaults
     default_humidity = 46
     default_pressure = 986
-    default_temperature = 29.6
+    default_temperature = 29.6  
     default_wind_speed = 2.9
     
     if weather_data:
@@ -192,7 +191,7 @@ def page_prediction():
         kelvin_temp = weather_data.get('main', {}).get('temp', 302.15)
         default_temperature = kelvin_temp - 273.15
         default_wind_speed = weather_data.get('wind', {}).get('speed', default_wind_speed)
-        st.info(f"✓ Fetched current weather for {city}")
+        st.info(f"Fetched current weather for {city}")
     
     default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
     default_hour = datetime.now().hour
@@ -236,7 +235,7 @@ def page_prediction():
         st.session_state.predicted_ghi = None
     
     # Prediction button
-    if st.button("🔮 Predict GHI", key="predict_btn"):
+    if st.button("Predict GHI", key="predict_btn"):
         if knn is None:
             st.error("Model not loaded. Ensure `knn.pkl` exists.")
         else:
@@ -244,7 +243,7 @@ def page_prediction():
                 scaled_data = df[feature_names]
                 prediction = knn.predict(scaled_data)
                 st.session_state.predicted_ghi = float(prediction[0])
-                st.success(f"✓ Predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
+                st.success(f"Predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
     
@@ -253,23 +252,23 @@ def page_prediction():
     # Display prediction status
     st.subheader("Prediction Status")
     if st.session_state.predicted_ghi is None:
-        st.info("👆 Click 'Predict GHI' above to generate a prediction before proceeding to panel calculations.")
+        st.info("Click 'Predict GHI' above to generate a prediction before proceeding to panel calculations.")
     else:
-        st.success(f"✓ Current GHI Prediction: **{st.session_state.predicted_ghi:.2f} W/m²**")
+        st.success(f"Current GHI Prediction: **{st.session_state.predicted_ghi:.2f} W/m²**")
         st.caption("Use this value to calculate panel requirements")
 
 
 # ============== PAGE: CALCULATOR ==============
 def page_calculator():
-    st.title("🔧 Solar Panel Calculator")
+    st.title("Solar Panel Calculator")
     
     # Check if prediction exists
     if "predicted_ghi" not in st.session_state or st.session_state.predicted_ghi is None:
-        st.warning("⚠️ No GHI prediction available. Please go to the **Prediction** page and click 'Predict GHI' first.")
+        st.warning("No GHI prediction available. Please go to the Prediction page and click 'Predict GHI' first.")
         st.info("The prediction is needed to calculate panel requirements accurately.")
         return
     
-    st.success(f"✓ Using predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
+    st.success(f"Using predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
     
     st.subheader("System Requirements")
     required_power = st.number_input("Required Power Output (W)", min_value=0.0, max_value=1000000.0, 
@@ -326,7 +325,7 @@ def page_calculator():
                                help="Typical solar insolation hours. Menlo Park avg: ~5 hours/day")
     
     # Calculate button
-    if st.button("📊 Calculate Panels", key="calculate_btn"):
+    if st.button("Calculate Panels", key="calculate_btn"):
         if ghi_value is None or ghi_value <= 0:
             st.error("GHI value must be greater than 0.")
         else:
@@ -343,7 +342,7 @@ def page_calculator():
                     
                     # Results
                     st.divider()
-                    st.subheader("📊 Results")
+                    st.subheader("Results")
                     
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -361,7 +360,7 @@ def page_calculator():
                     
                     # Annual energy
                     st.divider()
-                    st.subheader("📈 Annual Energy Generation")
+                    st.subheader("Annual Energy Generation")
                     
                     energy_per_panel_year = (power_per_panel / 1000) * peak_sun_hours * 365
                     total_system_energy = energy_per_panel_year * panels_needed
@@ -375,7 +374,7 @@ def page_calculator():
                     
                     # Savings
                     st.divider()
-                    st.subheader("💰 Financial Analysis")
+                    st.subheader("Financial Analysis")
                     
                     avg_electricity_rate = st.number_input("Local electricity rate ($/kWh)", 
                                                            min_value=0.0, value=0.12, key="electricity_rate")
@@ -398,7 +397,7 @@ def page_calculator():
 
 # ============== PAGE: ABOUT ==============
 def page_about():
-    st.title("ℹ️ About This Application")
+    st.title("About This Application")
     
     st.markdown("---")
     st.header("Application Information")
@@ -406,7 +405,7 @@ def page_about():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🛠️ Technology Stack")
+        st.subheader("Technology Stack")
         st.markdown("""
         - **Frontend**: Streamlit (Python web framework)
         - **ML Model**: K-Nearest Neighbors (KNN)
@@ -415,7 +414,7 @@ def page_about():
         - **Visualization**: Streamlit charts and metrics
         """)
         
-        st.subheader("📊 Model Details")
+        st.subheader("Model Details")
         st.markdown("""
         - **Algorithm**: K-Nearest Neighbors (KNN)
         - **Input Features**: 7 weather parameters
@@ -425,7 +424,7 @@ def page_about():
         """)
     
     with col2:
-        st.subheader("🌍 Data Sources")
+        st.subheader("Data Sources")
         st.markdown("""
         - **Weather Data**: OpenWeatherMap API
           - Current conditions for any location
@@ -437,18 +436,18 @@ def page_about():
         - **Location Data**: Geographic coordinate lookup
         """)
         
-        st.subheader("✨ Features")
+        st.subheader("Features")
         st.markdown("""
-        ✓ Real-time weather integration
-        ✓ ML-based solar radiation prediction
-        ✓ Customizable panel specifications
-        ✓ Annual energy generation estimates
-        ✓ Financial savings calculations
-        ✓ Location-based analysis
+        - Real-time weather integration
+        - ML-based solar radiation prediction
+        - Customizable panel specifications
+        - Annual energy generation estimates
+        - Financial savings calculations
+        - Location-based analysis
         """)
     
     st.markdown("---")
-    st.subheader("📚 How Solar Radiation Prediction Works")
+    st.subheader("How Solar Radiation Prediction Works")
     
     st.markdown("""
     ### The Machine Learning Approach
@@ -476,7 +475,7 @@ def page_about():
     """)
     
     st.markdown("---")
-    st.subheader("🔬 Solar Panel Efficiency Factors")
+    st.subheader("Solar Panel Efficiency Factors")
     
     st.markdown("""
     ### Why System Derate?
@@ -509,7 +508,7 @@ def page_about():
     """)
     
     st.markdown("---")
-    st.subheader("❓ FAQ")
+    st.subheader("FAQ")
     
     with st.expander("What is GHI (Global Horizontal Irradiance)?"):
         st.markdown("""
@@ -560,7 +559,7 @@ def page_about():
         """)
     
     st.markdown("---")
-    st.subheader("📞 Support & Feedback")
+    st.subheader("Support & Feedback")
     st.markdown("""
     For questions, issues, or suggestions about this application, please refer to the project documentation
     or contact the development team.
@@ -572,13 +571,13 @@ def page_about():
 
 # ============== MAIN APP NAVIGATION ==============
 def main():
-    st.sidebar.title("🌞 Navigation")
+    st.sidebar.title("Navigation")
     
     page_options = {
-        "🏠 Home": page_home,
-        "📈 Prediction": page_prediction,
-        "🔧 Calculator": page_calculator,
-        "ℹ️ About": page_about,
+        "Home": page_home,
+        "Prediction": page_prediction,
+        "Calculator": page_calculator,
+        "About": page_about,
     }
     
     selected_page = st.sidebar.radio(
