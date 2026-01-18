@@ -240,10 +240,13 @@ def page_prediction():
             st.error("Model not loaded. Ensure `knn.pkl` exists.")
         else:
             try:
-                scaled_data = df[feature_names]
-                prediction = knn.predict(scaled_data)
+                # Ensure features are in correct order and format for the model
+                input_data = df[feature_names].values
+                prediction = knn.predict(input_data)
                 st.session_state.predicted_ghi = float(prediction[0])
                 st.success(f"Predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
+                # Debug: Show input values
+                st.caption(f"Input: Hour={hour}, Temp={temperature}°C, Humidity={relative_humidity}%")
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
     
