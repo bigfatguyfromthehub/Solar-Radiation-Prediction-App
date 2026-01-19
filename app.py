@@ -5,6 +5,8 @@ import requests
 import json
 from datetime import datetime
 from math import ceil
+import pytz
+from timezonefinder import TimezoneFinder
 
 # Configure page
 st.set_page_config(
@@ -48,6 +50,19 @@ def fetch_weather_data(lat, lon, city_name):
     except Exception as e:
         pass
     return None
+
+def get_local_hour(lat, lon):
+    """Get the current hour in the local timezone of the given coordinates."""
+    try:
+        tf = TimezoneFinder()
+        timezone_str = tf.timezone_at(lat=lat, lng=lon)
+        if timezone_str:
+            local_tz = pytz.timezone(timezone_str)
+            local_time = datetime.now(local_tz)
+            return local_time.hour
+    except Exception as e:
+        pass
+    return datetime.now().hour
 
 
 # ============== PAGE: HOME ==============
@@ -194,7 +209,8 @@ def page_prediction():
         st.info(f"Fetched current weather for {city}")
     
     default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
-    default_hour = datetime.now().hour
+    # Get local hour based on city timezone (not UTC)
+    default_hour = get_local_hour(lat, lon)
     
     # Create input fields
     st.subheader("Enter Weather Features")
