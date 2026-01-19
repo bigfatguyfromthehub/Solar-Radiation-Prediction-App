@@ -5,8 +5,6 @@ import requests
 import json
 from datetime import datetime
 from math import ceil
-import pytz
-from timezonefinder import TimezoneFinder
 
 # Configure page
 st.set_page_config(
@@ -51,15 +49,20 @@ def fetch_weather_data(lat, lon, city_name):
         pass
     return None
 
-def get_local_hour(lat, lon):
-    """Get the current hour in the local timezone of the given coordinates."""
+def get_local_hour(timezone_offset):
+    """Get the current hour in the specified timezone offset (seconds from UTC).
+    
+    Args:
+        timezone_offset: Timezone offset in seconds from UTC (from weather API)
+    
+    Returns:
+        Current hour in the city's timezone
+    """
     try:
-        tf = TimezoneFinder()
-        timezone_str = tf.timezone_at(lat=lat, lng=lon)
-        if timezone_str:
-            local_tz = pytz.timezone(timezone_str)
-            local_time = datetime.now(local_tz)
-            return local_time.hour
+        # timezone_offset is in seconds
+        utc_now = datetime.utcnow()
+        city_time = utc_now.timestamp() + timezone_offset
+        return datetime.fromtimestamp(city_time).hour
     except Exception as e:
         pass
     return datetime.now().hour
@@ -209,8 +212,9 @@ def page_prediction():
         st.info(f"Fetched current weather for {city}")
     
     default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
-    # Get local hour based on city timezone (not UTC)
-    default_hour = get_local_hour(lat, lon)
+    # Get local hour based on city's timezone from weather data
+    timezone_offset = weather_data.get('timezone', 0) if weather_data else 0
+    default_hour = get_local_hour(timezone_offset)
     
     # Create input fields
     st.subheader("Enter Weather Features")

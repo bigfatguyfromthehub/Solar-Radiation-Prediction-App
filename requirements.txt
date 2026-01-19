@@ -4,5 +4,3 @@ scikit-learn
 requests
 datetime
 streamlit
-pytz
-timezonefinder
