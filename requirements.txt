@@ -3,4 +3,4 @@ pandas
 scikit-learn
 requests
 datetime
-streamlit
+streamlit>=1.20.0
