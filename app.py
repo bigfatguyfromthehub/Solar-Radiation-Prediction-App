@@ -5,6 +5,9 @@ import requests
 import json
 from datetime import datetime
 from math import ceil
+from geopy.geocoders import Nominatim
+import folium
+from streamlit_folium import st_folium
 
 # Configure page
 st.set_page_config(
@@ -19,6 +22,70 @@ try:
 except Exception as e:
     knn = None
     st.error(f"Failed to load model: {e}")
+
+# City database with population data (sorted by population)
+MAJOR_CITIES = [
+    {"name": "Tokyo", "lat": 35.6762, "lon": 139.6503, "population": 37400068},
+    {"name": "Delhi", "lat": 28.7041, "lon": 77.1025, "population": 32941000},
+    {"name": "Shanghai", "lat": 31.2304, "lon": 121.4737, "population": 27058000},
+    {"name": "São Paulo", "lat": -23.5505, "lon": -46.6333, "population": 22043028},
+    {"name": "Mexico City", "lat": 19.4326, "lon": -99.1332, "population": 21581000},
+    {"name": "Cairo", "lat": 30.0444, "lon": 31.2357, "population": 21323000},
+    {"name": "Mumbai", "lat": 19.0760, "lon": 72.8777, "population": 20961000},
+    {"name": "Beijing", "lat": 39.9042, "lon": 116.4074, "population": 21540000},
+    {"name": "Osaka", "lat": 34.6937, "lon": 135.5023, "population": 19223000},
+    {"name": "New York", "lat": 40.7128, "lon": -74.0060, "population": 18823000},
+    {"name": "Karachi", "lat": 24.8607, "lon": 67.0011, "population": 15400000},
+    {"name": "Buenos Aires", "lat": -34.6037, "lon": -58.3816, "population": 15042000},
+    {"name": "Los Angeles", "lat": 34.0522, "lon": -118.2437, "population": 13873000},
+    {"name": "Manila", "lat": 14.5994, "lon": 120.9842, "population": 13923000},
+    {"name": "Kolkata", "lat": 22.5726, "lon": 88.3639, "population": 14681000},
+    {"name": "Lagos", "lat": 6.5244, "lon": 3.3792, "population": 13463000},
+    {"name": "Rio de Janeiro", "lat": -22.9068, "lon": -43.1729, "population": 12280000},
+    {"name": "Guangzhou", "lat": 23.1291, "lon": 113.2644, "population": 15301000},
+    {"name": "London", "lat": 51.5074, "lon": -0.1278, "population": 9002488},
+    {"name": "Moscow", "lat": 55.7558, "lon": 37.6173, "population": 12655050},
+    {"name": "Bangkok", "lat": 13.7563, "lon": 100.5018, "population": 10899698},
+    {"name": "Istanbul", "lat": 41.0082, "lon": 28.9784, "population": 15029231},
+    {"name": "Paris", "lat": 48.8566, "lon": 2.3522, "population": 2161000},
+    {"name": "Menlo Park", "lat": 37.4530, "lon": -122.1817, "population": 32026},
+    {"name": "San Francisco", "lat": 37.7749, "lon": -122.4194, "population": 873965},
+    {"name": "Chicago", "lat": 41.8781, "lon": -87.6298, "population": 2716000},
+    {"name": "Houston", "lat": 29.7604, "lon": -95.3698, "population": 2320268},
+    {"name": "Phoenix", "lat": 33.4484, "lon": -112.0742, "population": 1580619},
+    {"name": "Miami", "lat": 25.7617, "lon": -80.1918, "population": 467963},
+    {"name": "Toronto", "lat": 43.6532, "lon": -79.3832, "population": 2930000},
+    {"name": "Mexico", "lat": 19.4326, "lon": -99.1332, "population": 9209944},
+    {"name": "Berlin", "lat": 52.5200, "lon": 13.4050, "population": 3645000},
+    {"name": "Sydney", "lat": -33.8688, "lon": 151.2093, "population": 5312000},
+    {"name": "Dubai", "lat": 25.2048, "lon": 55.2708, "population": 3693000},
+    {"name": "Singapore", "lat": 1.3521, "lon": 103.8198, "population": 5638000},
+    {"name": "Hong Kong", "lat": 22.3193, "lon": 114.1694, "population": 7500700},
+    {"name": "Seoul", "lat": 37.5665, "lon": 126.9780, "population": 9776000},
+    {"name": "Bangkok", "lat": 13.7563, "lon": 100.5018, "population": 10156000},
+    {"name": "Madrid", "lat": 40.4168, "lon": -3.7038, "population": 3280000},
+    {"name": "Barcelona", "lat": 41.3851, "lon": 2.1734, "population": 1620000},
+    {"name": "Rome", "lat": 41.9028, "lon": 12.4964, "population": 2761477},
+    {"name": "Amsterdam", "lat": 52.3676, "lon": 4.9041, "population": 873000},
+]
+
+# Initialize geocoder
+geolocator = Nominatim(user_agent="solar_app")
+
+def search_cities(query):
+    """Search for cities matching the query, sorted by population (descending)."""
+    query_lower = query.lower()
+    matching_cities = [
+        city for city in MAJOR_CITIES 
+        if query_lower in city["name"].lower()
+    ]
+    # Sort by population descending
+    matching_cities.sort(key=lambda x: x["population"], reverse=True)
+    return matching_cities
+
+def get_city_display_text(city):
+    """Format city display text with population."""
+    return f"{city['name']} ({city['population']:,} people)"
 
 # Helper functions
 def get_coordinates(city_name):
@@ -183,16 +250,120 @@ def page_home():
 def page_prediction():
     st.title("Solar Radiation Prediction")
     
-    # Input city and fetch weather
-    city = st.text_input("Enter City Name", value="Menlo Park", key="city_input")
+    # Initialize session state for selected city
+    if "selected_city" not in st.session_state:
+        st.session_state.selected_city = {"name": "Menlo Park", "lat": 37.4530, "lon": -122.1817}
     
-    lat, lon = get_coordinates(city)
+    # City selection interface
+    st.subheader("Step 1: Select a City")
     
-    if lat is None or lon is None:
-        st.warning(f"Could not find coordinates for '{city}'. Using default values.")
-        lat, lon = 37.45980962438753, -122.1511311602308
-    else:
-        st.success(f"Found {city} (Lat: {lat:.2f}, Lon: {lon:.2f})")
+    # Create tabs for different selection methods
+    tab_search, tab_map = st.tabs(["Search by City Name", "Select on Map"])
+    
+    with tab_search:
+        st.markdown("**Type a city name and select from the dropdown**")
+        
+        # City search input
+        search_input = st.text_input("Search cities:", value="", key="city_search_input", 
+                                    placeholder="e.g., Tokyo, New York, Sydney...")
+        
+        if search_input:
+            matching_cities = search_cities(search_input)
+            
+            if matching_cities:
+                # Create display options with city names and populations
+                city_options = [get_city_display_text(city) for city in matching_cities]
+                
+                selected_option = st.selectbox(
+                    "Select a city:",
+                    options=city_options,
+                    key="city_selectbox"
+                )
+                
+                # Get the selected city data
+                selected_index = city_options.index(selected_option)
+                st.session_state.selected_city = matching_cities[selected_index]
+                
+                st.success(f"Selected: {st.session_state.selected_city['name']}")
+            else:
+                st.warning(f"No cities found matching '{search_input}'. Try searching for a major city.")
+        else:
+            # Show popular cities if no search input
+            st.info("**Popular Cities:**")
+            popular = sorted(MAJOR_CITIES, key=lambda x: x["population"], reverse=True)[:10]
+            for city in popular:
+                if st.button(f"🌍 {city['name']} ({city['population']:,} people)", key=f"btn_{city['name']}"):
+                    st.session_state.selected_city = city
+                    st.rerun()
+    
+    with tab_map:
+        st.markdown("**Click on the map to select a location**")
+        
+        # Create a folium map centered on the current selected city
+        center_lat = st.session_state.selected_city["lat"]
+        center_lon = st.session_state.selected_city["lon"]
+        
+        m = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=4,
+            tiles="OpenStreetMap"
+        )
+        
+        # Add a marker for the currently selected city
+        folium.Marker(
+            location=[center_lat, center_lon],
+            popup=f"{st.session_state.selected_city['name']}",
+            tooltip=f"{st.session_state.selected_city['name']}",
+            icon=folium.Icon(color='blue', icon='info-sign')
+        ).add_to(m)
+        
+        # Capture map clicks
+        map_data = st_folium(m, width=700, height=500)
+        
+        if map_data and map_data['last_clicked']:
+            clicked_lat = map_data['last_clicked']['lat']
+            clicked_lon = map_data['last_clicked']['lng']
+            
+            # Try to reverse geocode the clicked location
+            try:
+                location = geolocator.reverse(f"{clicked_lat}, {clicked_lon}", language='en')
+                # Extract city name from the address
+                address_parts = location.address.split(',')
+                city_name = address_parts[-2].strip() if len(address_parts) > 1 else address_parts[0].strip()
+                
+                st.session_state.selected_city = {
+                    "name": city_name,
+                    "lat": clicked_lat,
+                    "lon": clicked_lon
+                }
+                st.success(f"Selected location: {city_name} (Lat: {clicked_lat:.4f}, Lon: {clicked_lon:.4f})")
+                st.rerun()
+            except Exception as e:
+                st.session_state.selected_city = {
+                    "name": f"Custom Location",
+                    "lat": clicked_lat,
+                    "lon": clicked_lon
+                }
+                st.success(f"Selected custom location (Lat: {clicked_lat:.4f}, Lon: {clicked_lon:.4f})")
+    
+    st.divider()
+    
+    # Display selected city info
+    st.subheader("Selected Location")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("City", st.session_state.selected_city["name"])
+    with col2:
+        st.metric("Latitude", f"{st.session_state.selected_city['lat']:.4f}")
+    with col3:
+        st.metric("Longitude", f"{st.session_state.selected_city['lon']:.4f}")
+    
+    # Use selected city coordinates
+    city = st.session_state.selected_city["name"]
+    lat = st.session_state.selected_city["lat"]
+    lon = st.session_state.selected_city["lon"]
+    
+    st.success(f"Found {city} (Lat: {lat:.2f}, Lon: {lon:.2f})")
     
     # Fetch weather data
     weather_data = fetch_weather_data(lat, lon, city)

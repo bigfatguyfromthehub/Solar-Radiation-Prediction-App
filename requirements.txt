@@ -4,3 +4,6 @@ scikit-learn
 requests
 datetime
 streamlit>=1.20.0
+geopy
+folium
+streamlit-folium
