@@ -140,7 +140,7 @@ def page_home():
     st.title("Solar Radiation Prediction App")
     
     st.markdown("---")
-    st.header("Welcome to the Solar Radiation Prediction Application")
+    st.header("Welcome to the Solar Radiation Prediction Application!")
     
     col1, col2 = st.columns([2, 1])
     
