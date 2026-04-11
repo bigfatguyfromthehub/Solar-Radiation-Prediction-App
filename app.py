@@ -300,6 +300,7 @@ def page_prediction():
             label = f"✅ {city['name']}" if is_selected else city["name"]
             if cols[i % 5].button(label, key=f"btn_{city['name']}", use_container_width=True):
                 st.session_state["_pending_city"] = city
+                st.rerun()
     
     with tab_map:
         st.markdown("**Click on the map to select a location**")
@@ -406,26 +407,37 @@ def page_prediction():
         st.session_state["wind"] = float(round(default_wind_speed, 2))
         st.session_state["albedo"] = 0.15
 
+    # Normalise session-state types before rendering number_inputs.
+    # A user can type a bare integer (e.g. "30") into a float field; Streamlit
+    # stores it as int, which then conflicts with float min_value/max_value and
+    # raises StreamlitMixedNumericTypesError on the next rerun.
+    for _key in ("temp", "dew", "wind", "albedo"):
+        if _key in st.session_state and isinstance(st.session_state[_key], int):
+            st.session_state[_key] = float(st.session_state[_key])
+    for _key in ("hour", "humidity", "pressure"):
+        if _key in st.session_state and isinstance(st.session_state[_key], float):
+            st.session_state[_key] = int(st.session_state[_key])
+
     # Create input fields
     st.subheader("Enter Weather Features")
     col1, col2 = st.columns(2)
     
     with col1:
-        hour = st.number_input("Hour (0-23)", min_value=0, max_value=23, value=default_hour, key="hour")
-        temperature = st.number_input("Temperature (°C)", min_value=-50.0, max_value=60.0, 
-                                     value=default_temperature, key="temp")
-        dew_point = st.number_input("Dew Point (°C)", min_value=-50.0, max_value=40.0, 
-                                   value=default_dew_point, key="dew")
-        relative_humidity = st.number_input("Relative Humidity (%)", min_value=0, max_value=100, 
-                                           value=default_humidity, key="humidity")
-    
+        hour = st.number_input("Hour (0-23)", min_value=0, max_value=23, value=int(default_hour), key="hour")
+        temperature = st.number_input("Temperature (°C)", min_value=-50.0, max_value=60.0,
+                                     value=float(default_temperature), key="temp")
+        dew_point = st.number_input("Dew Point (°C)", min_value=-50.0, max_value=40.0,
+                                   value=float(default_dew_point), key="dew")
+        relative_humidity = st.number_input("Relative Humidity (%)", min_value=0, max_value=100,
+                                           value=int(default_humidity), key="humidity")
+
     with col2:
-        surface_albedo = st.number_input("Surface Albedo", min_value=0.0, max_value=1.0, 
+        surface_albedo = st.number_input("Surface Albedo", min_value=0.0, max_value=1.0,
                                         value=0.15, key="albedo")
-        pressure = st.number_input("Pressure (hPa)", min_value=800, max_value=1100, 
-                                  value=default_pressure, key="pressure")
-        wind_speed = st.number_input("Wind Speed (m/s)", min_value=0.0, max_value=50.0, 
-                                    value=default_wind_speed, key="wind")
+        pressure = st.number_input("Pressure (hPa)", min_value=800, max_value=1100,
+                                  value=int(default_pressure), key="pressure")
+        wind_speed = st.number_input("Wind Speed (m/s)", min_value=0.0, max_value=50.0,
+                                    value=float(default_wind_speed), key="wind")
     
     # Build feature dataframe
     feature_names = ['Hour', 'Temperature', 'Dew Point', 'Relative Humidity', 'Surface Albedo', 'Pressure', 'Wind Speed']
