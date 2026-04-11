@@ -43,50 +43,62 @@ except Exception as e:
     knn = None
     st.error(f"Failed to load model: {e}")
 
+# Average retail electricity rates ($/kWh) by country — IEA / GlobalPetrolPrices 2024
+ELECTRICITY_RATES = {
+    "Japan": 0.24, "India": 0.08, "China": 0.08, "Brazil": 0.14,
+    "Mexico": 0.10, "Egypt": 0.04, "Pakistan": 0.09, "Argentina": 0.06,
+    "Philippines": 0.18, "Nigeria": 0.05, "USA": 0.16, "UK": 0.34,
+    "France": 0.23, "Germany": 0.40, "Russia": 0.06, "Thailand": 0.12,
+    "Turkey": 0.11, "Canada": 0.13, "Australia": 0.25, "UAE": 0.08,
+    "Singapore": 0.22, "Hong Kong": 0.16, "South Korea": 0.11,
+    "Spain": 0.28, "Italy": 0.30, "Netherlands": 0.35, "South Africa": 0.14,
+}
+DEFAULT_RATE = 0.15  # fallback when country unknown
+
 # City database with population data (sorted by population)
 MAJOR_CITIES = [
-    {"name": "Tokyo", "lat": 35.6762, "lon": 139.6503, "population": 37400068},
-    {"name": "Delhi", "lat": 28.7041, "lon": 77.1025, "population": 32941000},
-    {"name": "Shanghai", "lat": 31.2304, "lon": 121.4737, "population": 27058000},
-    {"name": "São Paulo", "lat": -23.5505, "lon": -46.6333, "population": 22043028},
-    {"name": "Mexico City", "lat": 19.4326, "lon": -99.1332, "population": 21581000},
-    {"name": "Cairo", "lat": 30.0444, "lon": 31.2357, "population": 21323000},
-    {"name": "Mumbai", "lat": 19.0760, "lon": 72.8777, "population": 20961000},
-    {"name": "Beijing", "lat": 39.9042, "lon": 116.4074, "population": 21540000},
-    {"name": "Osaka", "lat": 34.6937, "lon": 135.5023, "population": 19223000},
-    {"name": "New York", "lat": 40.7128, "lon": -74.0060, "population": 18823000},
-    {"name": "Karachi", "lat": 24.8607, "lon": 67.0011, "population": 15400000},
-    {"name": "Buenos Aires", "lat": -34.6037, "lon": -58.3816, "population": 15042000},
-    {"name": "Los Angeles", "lat": 34.0522, "lon": -118.2437, "population": 13873000},
-    {"name": "Manila", "lat": 14.5994, "lon": 120.9842, "population": 13923000},
-    {"name": "Kolkata", "lat": 22.5726, "lon": 88.3639, "population": 14681000},
-    {"name": "Lagos", "lat": 6.5244, "lon": 3.3792, "population": 13463000},
-    {"name": "Rio de Janeiro", "lat": -22.9068, "lon": -43.1729, "population": 12280000},
-    {"name": "Guangzhou", "lat": 23.1291, "lon": 113.2644, "population": 15301000},
-    {"name": "London", "lat": 51.5074, "lon": -0.1278, "population": 9002488},
-    {"name": "Moscow", "lat": 55.7558, "lon": 37.6173, "population": 12655050},
-    {"name": "Bangkok", "lat": 13.7563, "lon": 100.5018, "population": 10899698},
-    {"name": "Istanbul", "lat": 41.0082, "lon": 28.9784, "population": 15029231},
-    {"name": "Paris", "lat": 48.8566, "lon": 2.3522, "population": 2161000},
-    {"name": "Menlo Park", "lat": 37.4530, "lon": -122.1817, "population": 32026},
-    {"name": "San Francisco", "lat": 37.7749, "lon": -122.4194, "population": 873965},
-    {"name": "Chicago", "lat": 41.8781, "lon": -87.6298, "population": 2716000},
-    {"name": "Houston", "lat": 29.7604, "lon": -95.3698, "population": 2320268},
-    {"name": "Phoenix", "lat": 33.4484, "lon": -112.0742, "population": 1580619},
-    {"name": "Miami", "lat": 25.7617, "lon": -80.1918, "population": 467963},
-    {"name": "Toronto", "lat": 43.6532, "lon": -79.3832, "population": 2930000},
-    {"name": "Mexico", "lat": 19.4326, "lon": -99.1332, "population": 9209944},
-    {"name": "Berlin", "lat": 52.5200, "lon": 13.4050, "population": 3645000},
-    {"name": "Sydney", "lat": -33.8688, "lon": 151.2093, "population": 5312000},
-    {"name": "Dubai", "lat": 25.2048, "lon": 55.2708, "population": 3693000},
-    {"name": "Singapore", "lat": 1.3521, "lon": 103.8198, "population": 5638000},
-    {"name": "Hong Kong", "lat": 22.3193, "lon": 114.1694, "population": 7500700},
-    {"name": "Seoul", "lat": 37.5665, "lon": 126.9780, "population": 9776000},
-    {"name": "Bangkok", "lat": 13.7563, "lon": 100.5018, "population": 10156000},
-    {"name": "Madrid", "lat": 40.4168, "lon": -3.7038, "population": 3280000},
-    {"name": "Barcelona", "lat": 41.3851, "lon": 2.1734, "population": 1620000},
-    {"name": "Rome", "lat": 41.9028, "lon": 12.4964, "population": 2761477},
-    {"name": "Amsterdam", "lat": 52.3676, "lon": 4.9041, "population": 873000},
+    {"name": "Tokyo",           "lat": 35.6762,  "lon": 139.6503,  "population": 37400068, "country": "Japan"},
+    {"name": "Delhi",           "lat": 28.7041,  "lon": 77.1025,   "population": 32941000, "country": "India"},
+    {"name": "Shanghai",        "lat": 31.2304,  "lon": 121.4737,  "population": 27058000, "country": "China"},
+    {"name": "São Paulo",       "lat": -23.5505, "lon": -46.6333,  "population": 22043028, "country": "Brazil"},
+    {"name": "Mexico City",     "lat": 19.4326,  "lon": -99.1332,  "population": 21581000, "country": "Mexico"},
+    {"name": "Cairo",           "lat": 30.0444,  "lon": 31.2357,   "population": 21323000, "country": "Egypt"},
+    {"name": "Mumbai",          "lat": 19.0760,  "lon": 72.8777,   "population": 20961000, "country": "India"},
+    {"name": "Beijing",         "lat": 39.9042,  "lon": 116.4074,  "population": 21540000, "country": "China"},
+    {"name": "Osaka",           "lat": 34.6937,  "lon": 135.5023,  "population": 19223000, "country": "Japan"},
+    {"name": "New York",        "lat": 40.7128,  "lon": -74.0060,  "population": 18823000, "country": "USA"},
+    {"name": "Karachi",         "lat": 24.8607,  "lon": 67.0011,   "population": 15400000, "country": "Pakistan"},
+    {"name": "Buenos Aires",    "lat": -34.6037, "lon": -58.3816,  "population": 15042000, "country": "Argentina"},
+    {"name": "Los Angeles",     "lat": 34.0522,  "lon": -118.2437, "population": 13873000, "country": "USA"},
+    {"name": "Manila",          "lat": 14.5994,  "lon": 120.9842,  "population": 13923000, "country": "Philippines"},
+    {"name": "Kolkata",         "lat": 22.5726,  "lon": 88.3639,   "population": 14681000, "country": "India"},
+    {"name": "Lagos",           "lat": 6.5244,   "lon": 3.3792,    "population": 13463000, "country": "Nigeria"},
+    {"name": "Rio de Janeiro",  "lat": -22.9068, "lon": -43.1729,  "population": 12280000, "country": "Brazil"},
+    {"name": "Guangzhou",       "lat": 23.1291,  "lon": 113.2644,  "population": 15301000, "country": "China"},
+    {"name": "London",          "lat": 51.5074,  "lon": -0.1278,   "population": 9002488,  "country": "UK"},
+    {"name": "Moscow",          "lat": 55.7558,  "lon": 37.6173,   "population": 12655050, "country": "Russia"},
+    {"name": "Bangkok",         "lat": 13.7563,  "lon": 100.5018,  "population": 10899698, "country": "Thailand"},
+    {"name": "Istanbul",        "lat": 41.0082,  "lon": 28.9784,   "population": 15029231, "country": "Turkey"},
+    {"name": "Paris",           "lat": 48.8566,  "lon": 2.3522,    "population": 2161000,  "country": "France"},
+    {"name": "Menlo Park",      "lat": 37.4530,  "lon": -122.1817, "population": 32026,    "country": "USA"},
+    {"name": "San Francisco",   "lat": 37.7749,  "lon": -122.4194, "population": 873965,   "country": "USA"},
+    {"name": "Chicago",         "lat": 41.8781,  "lon": -87.6298,  "population": 2716000,  "country": "USA"},
+    {"name": "Houston",         "lat": 29.7604,  "lon": -95.3698,  "population": 2320268,  "country": "USA"},
+    {"name": "Phoenix",         "lat": 33.4484,  "lon": -112.0742, "population": 1580619,  "country": "USA"},
+    {"name": "Miami",           "lat": 25.7617,  "lon": -80.1918,  "population": 467963,   "country": "USA"},
+    {"name": "Toronto",         "lat": 43.6532,  "lon": -79.3832,  "population": 2930000,  "country": "Canada"},
+    {"name": "Mexico",          "lat": 19.4326,  "lon": -99.1332,  "population": 9209944,  "country": "Mexico"},
+    {"name": "Berlin",          "lat": 52.5200,  "lon": 13.4050,   "population": 3645000,  "country": "Germany"},
+    {"name": "Sydney",          "lat": -33.8688, "lon": 151.2093,  "population": 5312000,  "country": "Australia"},
+    {"name": "Dubai",           "lat": 25.2048,  "lon": 55.2708,   "population": 3693000,  "country": "UAE"},
+    {"name": "Singapore",       "lat": 1.3521,   "lon": 103.8198,  "population": 5638000,  "country": "Singapore"},
+    {"name": "Hong Kong",       "lat": 22.3193,  "lon": 114.1694,  "population": 7500700,  "country": "Hong Kong"},
+    {"name": "Seoul",           "lat": 37.5665,  "lon": 126.9780,  "population": 9776000,  "country": "South Korea"},
+    {"name": "Bangkok",         "lat": 13.7563,  "lon": 100.5018,  "population": 10156000, "country": "Thailand"},
+    {"name": "Madrid",          "lat": 40.4168,  "lon": -3.7038,   "population": 3280000,  "country": "Spain"},
+    {"name": "Barcelona",       "lat": 41.3851,  "lon": 2.1734,    "population": 1620000,  "country": "Spain"},
+    {"name": "Rome",            "lat": 41.9028,  "lon": 12.4964,   "population": 2761477,  "country": "Italy"},
+    {"name": "Amsterdam",       "lat": 52.3676,  "lon": 4.9041,    "population": 873000,   "country": "Netherlands"},
 ]
 
 def search_cities(query):
@@ -281,9 +293,19 @@ def page_prediction():
             unique_cities.append(city)
     city_options = [get_city_display_text(city) for city in unique_cities]
 
+    # On first ever load city_selectbox has no value, so Streamlit would
+    # default to index 0 (Tokyo — highest population) and overwrite the
+    # Menlo Park default. Seed it to match selected_city instead.
+    if "city_selectbox" not in st.session_state:
+        default_name = st.session_state.selected_city.get("name", "")
+        default_label = next(
+            (get_city_display_text(c) for c in unique_cities if c["name"] == default_name),
+            city_options[0],
+        )
+        st.session_state["city_selectbox"] = default_label
+
     # Pending-city written by a button click must be applied before the
     # selectbox widget is instantiated (cannot modify key after creation).
-    # A map click may also queue a pending city if it matches our known list.
     if "_pending_city" in st.session_state:
         pending = st.session_state.pop("_pending_city")
         st.session_state["city_selectbox"] = get_city_display_text(pending)
@@ -432,7 +454,8 @@ def page_calculator():
 
     # ── LEFT: all inputs ──────────────────────────────────────────────────
     with left:
-        st.caption(f"GHI: **{st.session_state.predicted_ghi:.1f} W/m²**")
+        _city_name = st.session_state.get("selected_city", {}).get("name", "Unknown")
+        st.caption(f"📍 {_city_name} · GHI: **{st.session_state.predicted_ghi:.1f} W/m²**")
 
         required_power = st.number_input("Required Power Output (W)", min_value=0.0,
                                          max_value=1_000_000.0, value=800.0, key="required_power")
@@ -457,8 +480,25 @@ def page_calculator():
 
         peak_sun_hours = st.slider("Peak Sun Hours / Day", 2.0, 8.0, 5.0, 0.5, key="peak_hours")
 
-        electricity_rate = st.number_input("Electricity rate ($/kWh)", 0.0, value=0.12, key="electricity_rate")
-        system_cost      = st.number_input("Installation cost ($)",     0.0, value=8000.0, key="system_cost")
+        # Auto-detect electricity rate from selected city's country.
+        # Look up country from MAJOR_CITIES directly (more reliable than
+        # trusting the stored selected_city dict which may lack the field).
+        selected_city = st.session_state.get("selected_city", {})
+        city_name = selected_city.get("name", "")
+        country = next(
+            (c["country"] for c in MAJOR_CITIES if c["name"] == city_name),
+            selected_city.get("country", ""),
+        )
+        auto_rate = ELECTRICITY_RATES.get(country, DEFAULT_RATE)
+        # Sync widget when city changes (track by city name, not country,
+        # so switching between two cities in the same country still updates).
+        if st.session_state.get("_last_rate_city") != city_name:
+            st.session_state["_last_rate_city"] = city_name
+            st.session_state["electricity_rate"] = float(auto_rate)
+        rate_label = f"Electricity rate ($/kWh) — {country} avg" if country else "Electricity rate ($/kWh)"
+        electricity_rate = st.number_input(rate_label, 0.0, value=float(auto_rate), key="electricity_rate")
+
+        system_cost = st.number_input("Installation cost ($)", 0.0, value=8000.0, key="system_cost")
 
         override_ghi = st.checkbox("Override GHI", key="override_ghi")
         ghi_value = (st.number_input("Override GHI (W/m²)", 0.0, value=800.0, key="override_ghi_val")
