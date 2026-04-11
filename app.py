@@ -140,7 +140,7 @@ def page_home():
     st.title("Solar Radiation Prediction App")
     
     st.markdown("---")
-    st.header("Welcome to the Solar Radiation Prediction Application!")
+    st.header("Welcome to the Solar Radiation Prediction Application")
     
     col1, col2 = st.columns([2, 1])
     
@@ -261,40 +261,45 @@ def page_prediction():
     tab_search, tab_map = st.tabs(["Search by City Name", "Select on Map"])
     
     with tab_search:
-        st.markdown("**Type a city name and select from the dropdown**")
-        
-        # City search input
-        search_input = st.text_input("Search cities:", value="", key="city_search_input", 
-                                    placeholder="e.g., Tokyo, New York, Sydney...")
-        
-        if search_input:
-            matching_cities = search_cities(search_input)
-            
-            if matching_cities:
-                # Create display options with city names and populations
-                city_options = [get_city_display_text(city) for city in matching_cities]
-                
-                selected_option = st.selectbox(
-                    "Select a city:",
-                    options=city_options,
-                    key="city_selectbox"
-                )
-                
-                # Get the selected city data
-                selected_index = city_options.index(selected_option)
-                st.session_state.selected_city = matching_cities[selected_index]
-                
-                st.success(f"Selected: {st.session_state.selected_city['name']}")
-            else:
-                st.warning(f"No cities found matching '{search_input}'. Try searching for a major city.")
-        else:
-            # Show popular cities if no search input
-            st.info("**Popular Cities:**")
-            popular = sorted(MAJOR_CITIES, key=lambda x: x["population"], reverse=True)[:10]
-            for city in popular:
-                if st.button(f"🌍 {city['name']} ({city['population']:,} people)", key=f"btn_{city['name']}"):
-                    st.session_state.selected_city = city
-                    st.rerun()
+        # Deduplicate cities by name, keeping the entry with the highest population
+        seen_names: set = set()
+        unique_cities = []
+        for city in sorted(MAJOR_CITIES, key=lambda x: x["population"], reverse=True):
+            if city["name"] not in seen_names:
+                seen_names.add(city["name"])
+                unique_cities.append(city)
+
+        city_options = [get_city_display_text(city) for city in unique_cities]
+
+        # A button click stores its choice in _pending_city. Apply it here, before
+        # the selectbox is instantiated, to avoid the "cannot modify after widget
+        # is instantiated" error that occurs when writing to city_selectbox later.
+        if "_pending_city" in st.session_state:
+            pending = st.session_state.pop("_pending_city")
+            st.session_state["city_selectbox"] = get_city_display_text(pending)
+
+        st.markdown("**Start typing to search — the dropdown filters as you type**")
+        selected_option = st.selectbox(
+            "Search cities:",
+            options=city_options,
+            key="city_selectbox",
+            help="Type any part of a city name to filter the list",
+        )
+
+        selected_idx = city_options.index(selected_option)
+        st.session_state.selected_city = unique_cities[selected_idx]
+        st.success(f"Selected: {st.session_state.selected_city['name']}")
+
+        # Popular cities — 5 compact pill-style buttons per row
+        st.caption("Popular cities:")
+        popular = unique_cities[:10]
+        selected_name = st.session_state.selected_city.get("name", "")
+        cols = st.columns(5)
+        for i, city in enumerate(popular):
+            is_selected = city["name"] == selected_name
+            label = f"✅ {city['name']}" if is_selected else city["name"]
+            if cols[i % 5].button(label, key=f"btn_{city['name']}", use_container_width=True):
+                st.session_state["_pending_city"] = city
     
     with tab_map:
         st.markdown("**Click on the map to select a location**")
@@ -386,7 +391,21 @@ def page_prediction():
     # Get local hour based on city's timezone from weather data
     timezone_offset = weather_data.get('timezone', 0) if weather_data else 0
     default_hour = get_local_hour(timezone_offset)
-    
+
+    # When the city changes, push fresh weather defaults into session state so
+    # that the number_input widgets (which ignore value= after first render)
+    # actually reflect the new city's conditions.
+    city_key = f"{lat:.4f}_{lon:.4f}"
+    if st.session_state.get("_last_city_key") != city_key:
+        st.session_state["_last_city_key"] = city_key
+        st.session_state["hour"] = int(default_hour)
+        st.session_state["temp"] = float(round(default_temperature, 2))
+        st.session_state["dew"] = float(round(default_dew_point, 2))
+        st.session_state["humidity"] = int(default_humidity)
+        st.session_state["pressure"] = int(default_pressure)
+        st.session_state["wind"] = float(round(default_wind_speed, 2))
+        st.session_state["albedo"] = 0.15
+
     # Create input fields
     st.subheader("Enter Weather Features")
     col1, col2 = st.columns(2)
