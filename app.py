@@ -5,15 +5,35 @@ import requests
 import json
 from datetime import datetime
 from math import ceil
-from geopy.geocoders import Nominatim
-import folium
-from streamlit_folium import st_folium
 
 # Configure page
 st.set_page_config(
     page_title="Solar Radiation Prediction App",
     layout="wide"
 )
+
+# Global CSS — hide the Streamlit toolbar and tighten spacing so more
+# content fits on a single screen without scrolling.
+st.markdown("""
+<style>
+    /* Hide top toolbar (Deploy button, hamburger, etc.) */
+    header[data-testid="stHeader"] { display: none !important; }
+
+    /* Reduce main block top padding from ~6rem to 1rem */
+    .block-container { padding-top: 1rem !important; padding-bottom: 0.5rem !important; }
+
+    /* Shrink default h1 (st.title) size */
+    h1 { font-size: 1.6rem !important; margin-bottom: 0.25rem !important; }
+
+    /* Shrink h2/h3 (st.header / st.subheader) */
+    h2 { font-size: 1.2rem !important; margin-bottom: 0.2rem !important; }
+    h3 { font-size: 1.05rem !important; margin-bottom: 0.15rem !important; }
+
+    /* Tighten spacing around metrics and widgets */
+    div[data-testid="stMetric"]  { padding: 0.3rem 0 !important; }
+    div[data-testid="stVerticalBlock"] > div { gap: 0.4rem !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # Load model globally (used by multiple pages)
 knn_path = "knn.pkl"  # Path to the trained KNN.pkl model
@@ -68,9 +88,6 @@ MAJOR_CITIES = [
     {"name": "Rome", "lat": 41.9028, "lon": 12.4964, "population": 2761477},
     {"name": "Amsterdam", "lat": 52.3676, "lon": 4.9041, "population": 873000},
 ]
-
-# Initialize geocoder
-geolocator = Nominatim(user_agent="solar_app")
 
 def search_cities(query):
     """Search for cities matching the query, sorted by population (descending)."""
@@ -248,376 +265,255 @@ def page_home():
 
 # ============== PAGE: PREDICTION ==============
 def page_prediction():
-    st.title("Solar Radiation Prediction")
-    
-    # Initialize session state for selected city
+    st.markdown("# ☀️ Solar Radiation Prediction")
+
     if "selected_city" not in st.session_state:
         st.session_state.selected_city = {"name": "Menlo Park", "lat": 37.4530, "lon": -122.1817}
-    
-    # City selection interface
-    st.subheader("Step 1: Select a City")
-    
-    # Create tabs for different selection methods
-    tab_search, tab_map = st.tabs(["Search by City Name", "Select on Map"])
-    
-    with tab_search:
-        # Deduplicate cities by name, keeping the entry with the highest population
-        seen_names: set = set()
-        unique_cities = []
-        for city in sorted(MAJOR_CITIES, key=lambda x: x["population"], reverse=True):
-            if city["name"] not in seen_names:
-                seen_names.add(city["name"])
-                unique_cities.append(city)
+    if "predicted_ghi" not in st.session_state:
+        st.session_state.predicted_ghi = None
 
-        city_options = [get_city_display_text(city) for city in unique_cities]
+    # ── Build deduplicated city list (needed in both columns) ──────────────
+    seen_names: set = set()
+    unique_cities = []
+    for city in sorted(MAJOR_CITIES, key=lambda x: x["population"], reverse=True):
+        if city["name"] not in seen_names:
+            seen_names.add(city["name"])
+            unique_cities.append(city)
+    city_options = [get_city_display_text(city) for city in unique_cities]
 
-        # A button click stores its choice in _pending_city. Apply it here, before
-        # the selectbox is instantiated, to avoid the "cannot modify after widget
-        # is instantiated" error that occurs when writing to city_selectbox later.
-        if "_pending_city" in st.session_state:
-            pending = st.session_state.pop("_pending_city")
-            st.session_state["city_selectbox"] = get_city_display_text(pending)
+    # Pending-city written by a button click must be applied before the
+    # selectbox widget is instantiated (cannot modify key after creation).
+    # A map click may also queue a pending city if it matches our known list.
+    if "_pending_city" in st.session_state:
+        pending = st.session_state.pop("_pending_city")
+        st.session_state["city_selectbox"] = get_city_display_text(pending)
 
-        st.markdown("**Start typing to search — the dropdown filters as you type**")
+    # ── Two-column layout: left = city, right = weather inputs ────────────
+    left, right = st.columns([1, 2])
+
+
+    # ── LEFT PANEL: city selection ─────────────────────────────────────────
+    with left:
         selected_option = st.selectbox(
-            "Search cities:",
+            "📍 Search city:",
             options=city_options,
             key="city_selectbox",
             help="Type any part of a city name to filter the list",
         )
-
         selected_idx = city_options.index(selected_option)
-        st.session_state.selected_city = unique_cities[selected_idx]
-        st.success(f"Selected: {st.session_state.selected_city['name']}")
 
-        # Popular cities — 5 compact pill-style buttons per row
+        st.session_state.selected_city = unique_cities[selected_idx]
+
+        # 6 popular cities in 3 columns = 2 compact rows
         st.caption("Popular cities:")
-        popular = unique_cities[:10]
+        popular = unique_cities[:6]
         selected_name = st.session_state.selected_city.get("name", "")
-        cols = st.columns(5)
+        btn_cols = st.columns(3)
         for i, city in enumerate(popular):
             is_selected = city["name"] == selected_name
             label = f"✅ {city['name']}" if is_selected else city["name"]
-            if cols[i % 5].button(label, key=f"btn_{city['name']}", use_container_width=True):
+            if btn_cols[i % 3].button(label, key=f"btn_{city['name']}", use_container_width=True):
                 st.session_state["_pending_city"] = city
                 st.rerun()
-    
-    with tab_map:
-        st.markdown("**Click on the map to select a location**")
-        
-        # Create a folium map centered on the current selected city
-        center_lat = st.session_state.selected_city["lat"]
-        center_lon = st.session_state.selected_city["lon"]
-        
-        m = folium.Map(
-            location=[center_lat, center_lon],
-            zoom_start=4,
-            tiles="OpenStreetMap"
-        )
-        
-        # Add a marker for the currently selected city
-        folium.Marker(
-            location=[center_lat, center_lon],
-            popup=f"{st.session_state.selected_city['name']}",
-            tooltip=f"{st.session_state.selected_city['name']}",
-            icon=folium.Icon(color='blue', icon='info-sign')
-        ).add_to(m)
-        
-        # Capture map clicks
-        map_data = st_folium(m, width=700, height=500)
-        
-        if map_data and map_data['last_clicked']:
-            clicked_lat = map_data['last_clicked']['lat']
-            clicked_lon = map_data['last_clicked']['lng']
-            
-            # Try to reverse geocode the clicked location
-            try:
-                location = geolocator.reverse(f"{clicked_lat}, {clicked_lon}", language='en')
-                # Extract city name from the address
-                address_parts = location.address.split(',')
-                city_name = address_parts[-2].strip() if len(address_parts) > 1 else address_parts[0].strip()
-                
-                st.session_state.selected_city = {
-                    "name": city_name,
-                    "lat": clicked_lat,
-                    "lon": clicked_lon
-                }
-                st.success(f"Selected location: {city_name} (Lat: {clicked_lat:.4f}, Lon: {clicked_lon:.4f})")
-                st.rerun()
-            except Exception as e:
-                st.session_state.selected_city = {
-                    "name": f"Custom Location",
-                    "lat": clicked_lat,
-                    "lon": clicked_lon
-                }
-                st.success(f"Selected custom location (Lat: {clicked_lat:.4f}, Lon: {clicked_lon:.4f})")
-    
-    st.divider()
-    
-    # Display selected city info
-    st.subheader("Selected Location")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("City", st.session_state.selected_city["name"])
-    with col2:
-        st.metric("Latitude", f"{st.session_state.selected_city['lat']:.4f}")
-    with col3:
-        st.metric("Longitude", f"{st.session_state.selected_city['lon']:.4f}")
-    
-    # Use selected city coordinates
-    city = st.session_state.selected_city["name"]
-    lat = st.session_state.selected_city["lat"]
-    lon = st.session_state.selected_city["lon"]
-    
-    st.success(f"Found {city} (Lat: {lat:.2f}, Lon: {lon:.2f})")
-    
-    # Fetch weather data
-    weather_data = fetch_weather_data(lat, lon, city)
-    
-    # Set defaults
-    default_humidity = 46
-    default_pressure = 986
-    default_temperature = 29.6  
-    default_wind_speed = 2.9
-    
-    if weather_data:
-        default_humidity = weather_data.get('main', {}).get('humidity', default_humidity)
-        default_pressure = weather_data.get('main', {}).get('pressure', default_pressure)
-        kelvin_temp = weather_data.get('main', {}).get('temp', 302.15)
-        default_temperature = kelvin_temp - 273.15
-        default_wind_speed = weather_data.get('wind', {}).get('speed', default_wind_speed)
-        st.info(f"Fetched current weather for {city}")
-    
-    default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
-    # Get local hour based on city's timezone from weather data
-    timezone_offset = weather_data.get('timezone', 0) if weather_data else 0
-    default_hour = get_local_hour(timezone_offset)
 
-    # When the city changes, push fresh weather defaults into session state so
-    # that the number_input widgets (which ignore value= after first render)
-    # actually reflect the new city's conditions.
-    city_key = f"{lat:.4f}_{lon:.4f}"
-    if st.session_state.get("_last_city_key") != city_key:
-        st.session_state["_last_city_key"] = city_key
-        st.session_state["hour"] = int(default_hour)
-        st.session_state["temp"] = float(round(default_temperature, 2))
-        st.session_state["dew"] = float(round(default_dew_point, 2))
-        st.session_state["humidity"] = int(default_humidity)
-        st.session_state["pressure"] = int(default_pressure)
-        st.session_state["wind"] = float(round(default_wind_speed, 2))
-        st.session_state["albedo"] = 0.15
+        # Single-line selected location summary
+        city = st.session_state.selected_city["name"]
+        lat  = st.session_state.selected_city["lat"]
+        lon  = st.session_state.selected_city["lon"]
+        st.markdown(f"#### 📌 {city}")
+        st.caption(f"{lat:.3f}°N, {lon:.3f}°E")
 
-    # Normalise session-state types before rendering number_inputs.
-    # A user can type a bare integer (e.g. "30") into a float field; Streamlit
-    # stores it as int, which then conflicts with float min_value/max_value and
-    # raises StreamlitMixedNumericTypesError on the next rerun.
-    for _key in ("temp", "dew", "wind", "albedo"):
-        if _key in st.session_state and isinstance(st.session_state[_key], int):
-            st.session_state[_key] = float(st.session_state[_key])
-    for _key in ("hour", "humidity", "pressure"):
-        if _key in st.session_state and isinstance(st.session_state[_key], float):
-            st.session_state[_key] = int(st.session_state[_key])
 
-    # Create input fields
-    st.subheader("Enter Weather Features")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        hour = st.number_input("Hour (0-23)", min_value=0, max_value=23, value=int(default_hour), key="hour")
-        temperature = st.number_input("Temperature (°C)", min_value=-50.0, max_value=60.0,
-                                     value=float(default_temperature), key="temp")
-        dew_point = st.number_input("Dew Point (°C)", min_value=-50.0, max_value=40.0,
-                                   value=float(default_dew_point), key="dew")
-        relative_humidity = st.number_input("Relative Humidity (%)", min_value=0, max_value=100,
-                                           value=int(default_humidity), key="humidity")
+    # ── RIGHT PANEL: weather inputs + prediction ───────────────────────────
+    with right:
+        st.subheader("🌤️ Weather Features")
 
-    with col2:
-        surface_albedo = st.number_input("Surface Albedo", min_value=0.0, max_value=1.0,
-                                        value=0.15, key="albedo")
-        pressure = st.number_input("Pressure (hPa)", min_value=800, max_value=1100,
-                                  value=int(default_pressure), key="pressure")
-        wind_speed = st.number_input("Wind Speed (m/s)", min_value=0.0, max_value=50.0,
-                                    value=float(default_wind_speed), key="wind")
-    
-    # Build feature dataframe
-    feature_names = ['Hour', 'Temperature', 'Dew Point', 'Relative Humidity', 'Surface Albedo', 'Pressure', 'Wind Speed']
-    features = {
-        "Hour": hour,
-        "Temperature": temperature,
-        "Dew Point": dew_point,
-        "Relative Humidity": relative_humidity,
-        "Surface Albedo": surface_albedo,
-        "Pressure": pressure,
-        "Wind Speed": wind_speed
-    }
-    df = pd.DataFrame(features, index=[0])
-    
-    # Initialize session state
-    if "predicted_ghi" not in st.session_state:
-        st.session_state.predicted_ghi = None
-    
-    # Prediction button
-    if st.button("Predict GHI", key="predict_btn"):
-        if knn is None:
-            st.error("Model not loaded. Ensure `knn.pkl` exists.")
+        # Fetch live weather for the selected city
+        weather_data = fetch_weather_data(lat, lon, city)
+
+        default_humidity    = 46
+        default_pressure    = 986
+        default_temperature = 29.6
+        default_wind_speed  = 2.9
+
+        if weather_data:
+            default_humidity    = weather_data.get('main', {}).get('humidity', default_humidity)
+            default_pressure    = weather_data.get('main', {}).get('pressure', default_pressure)
+            kelvin_temp         = weather_data.get('main', {}).get('temp', 302.15)
+            default_temperature = kelvin_temp - 273.15
+            default_wind_speed  = weather_data.get('wind', {}).get('speed', default_wind_speed)
+            st.caption(f"Live weather loaded for {city}")
+
+        default_dew_point = default_temperature - ((100 - default_humidity) / 5.)
+        timezone_offset   = weather_data.get('timezone', 0) if weather_data else 0
+        default_hour      = get_local_hour(timezone_offset)
+
+        # Flush fresh defaults into session state when the city changes so
+        # number_input widgets (which ignore value= after first render) update.
+        city_key = f"{lat:.4f}_{lon:.4f}"
+        if st.session_state.get("_last_city_key") != city_key:
+            st.session_state["_last_city_key"] = city_key
+            st.session_state["hour"]     = int(default_hour)
+            st.session_state["temp"]     = float(round(default_temperature, 2))
+            st.session_state["dew"]      = float(round(default_dew_point, 2))
+            st.session_state["humidity"] = int(default_humidity)
+            st.session_state["pressure"] = int(default_pressure)
+            st.session_state["wind"]     = float(round(default_wind_speed, 2))
+            st.session_state["albedo"]   = 0.15
+
+        # Guard: ensure float fields stay float and int fields stay int so
+        # Streamlit never sees a type mismatch between value and min/max.
+        for _key in ("temp", "dew", "wind", "albedo"):
+            if _key in st.session_state and isinstance(st.session_state[_key], int):
+                st.session_state[_key] = float(st.session_state[_key])
+        for _key in ("hour", "humidity", "pressure"):
+            if _key in st.session_state and isinstance(st.session_state[_key], float):
+                st.session_state[_key] = int(st.session_state[_key])
+
+        w1, w2 = st.columns(2)
+        with w1:
+            hour              = st.number_input("Hour (0–23)",          min_value=0,     max_value=23,   value=int(default_hour),             key="hour")
+            temperature       = st.number_input("Temperature (°C)",     min_value=-50.0, max_value=60.0, value=float(default_temperature),    key="temp")
+            dew_point         = st.number_input("Dew Point (°C)",       min_value=-50.0, max_value=40.0, value=float(default_dew_point),      key="dew")
+            relative_humidity = st.number_input("Relative Humidity (%)", min_value=0,    max_value=100,  value=int(default_humidity),         key="humidity")
+        with w2:
+            surface_albedo = st.number_input("Surface Albedo",      min_value=0.0, max_value=1.0,    value=0.15,                        key="albedo")
+            pressure       = st.number_input("Pressure (hPa)",      min_value=800, max_value=1100,   value=int(default_pressure),       key="pressure")
+            wind_speed     = st.number_input("Wind Speed (m/s)",    min_value=0.0, max_value=50.0,   value=float(default_wind_speed),   key="wind")
+
+        feature_names = ['Hour', 'Temperature', 'Dew Point', 'Relative Humidity', 'Surface Albedo', 'Pressure', 'Wind Speed']
+        df = pd.DataFrame({
+            "Hour": hour, "Temperature": temperature, "Dew Point": dew_point,
+            "Relative Humidity": relative_humidity, "Surface Albedo": surface_albedo,
+            "Pressure": pressure, "Wind Speed": wind_speed,
+        }, index=[0])
+
+        st.divider()
+        if st.button("⚡ Predict GHI", key="predict_btn", use_container_width=True):
+            if knn is None:
+                st.error("Model not loaded. Ensure `knn.pkl` exists.")
+            else:
+                try:
+                    prediction = knn.predict(df[feature_names].values)
+                    st.session_state.predicted_ghi = float(prediction[0])
+                except Exception as e:
+                    st.error(f"Prediction failed: {e}")
+
+        if st.session_state.predicted_ghi is not None:
+            st.success(f"### {st.session_state.predicted_ghi:.2f} W/m²  — Predicted GHI")
+            st.caption("Head to the Calculator page to size your solar panel system.")
         else:
-            try:
-                # Ensure features are in correct order and format for the model
-                input_data = df[feature_names].values
-                prediction = knn.predict(input_data)
-                st.session_state.predicted_ghi = float(prediction[0])
-                st.success(f"Predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
-                # Debug: Show input values
-                st.caption(f"Input: Hour={hour}, Temp={temperature}°C, Humidity={relative_humidity}%")
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
-    
-    st.divider()
-    
-    # Display prediction status
-    st.subheader("Prediction Status")
-    if st.session_state.predicted_ghi is None:
-        st.info("Click 'Predict GHI' above to generate a prediction before proceeding to panel calculations.")
-    else:
-        st.success(f"Current GHI Prediction: **{st.session_state.predicted_ghi:.2f} W/m²**")
-        st.caption("Use this value to calculate panel requirements")
+            st.info("Click **Predict GHI** to generate a prediction.")
+
 
 
 # ============== PAGE: CALCULATOR ==============
 def page_calculator():
-    st.title("Solar Panel Calculator")
-    
-    # Check if prediction exists
+    st.markdown("# 🔆 Solar Panel Calculator")
+
     if "predicted_ghi" not in st.session_state or st.session_state.predicted_ghi is None:
-        st.warning("No GHI prediction available. Please go to the Prediction page and click 'Predict GHI' first.")
-        st.info("The prediction is needed to calculate panel requirements accurately.")
+        st.warning("No GHI prediction yet — go to the Prediction page and click **Predict GHI** first.")
         return
-    
-    st.success(f"Using predicted GHI: **{st.session_state.predicted_ghi:.2f} W/m²**")
-    
-    st.subheader("System Requirements")
-    required_power = st.number_input("Required Power Output (W)", min_value=0.0, max_value=1000000.0, 
-                                     value=800.0, key="required_power")
-    
-    # Panel brand options
-    st.subheader("Select Solar Panel")
+
+    # Persist calculation results across reruns
+    if "calc_results" not in st.session_state:
+        st.session_state.calc_results = None
+
     brands = [
-        {"Brand": "SunPower", "Efficiency (%)": 22.8, "Area (m²)": 1.63, "Nominal Power (W)": 430},
-        {"Brand": "LG", "Efficiency (%)": 20.4, "Area (m²)": 1.70, "Nominal Power (W)": 400},
-        {"Brand": "Panasonic", "Efficiency (%)": 20.3, "Area (m²)": 1.70, "Nominal Power (W)": 405},
-        {"Brand": "Jinko (Generic)", "Efficiency (%)": 18.4, "Area (m²)": 1.70, "Nominal Power (W)": 375},
-        {"Brand": "Custom", "Efficiency (%)": None, "Area (m²)": None, "Nominal Power (W)": None}
+        {"Brand": "SunPower",      "Efficiency (%)": 22.8, "Area (m²)": 1.63, "Nominal Power (W)": 430},
+        {"Brand": "LG",            "Efficiency (%)": 20.4, "Area (m²)": 1.70, "Nominal Power (W)": 400},
+        {"Brand": "Panasonic",     "Efficiency (%)": 20.3, "Area (m²)": 1.70, "Nominal Power (W)": 405},
+        {"Brand": "Jinko (Generic)","Efficiency (%)": 18.4, "Area (m²)": 1.70, "Nominal Power (W)": 375},
+        {"Brand": "Custom",        "Efficiency (%)": None,  "Area (m²)": None,  "Nominal Power (W)": None},
     ]
     brands_df = pd.DataFrame(brands)
-    
-    with st.expander("View Panel Specifications", expanded=False):
-        st.table(brands_df)
-    
-    chosen_brand = st.selectbox("Choose a panel brand", [b["Brand"] for b in brands], key="brand_select")
-    
-    if chosen_brand == "Custom":
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            panel_efficiency = st.number_input("Efficiency (%)", min_value=0.0, max_value=100.0, 
-                                              value=18.0, key="custom_eff")
-        with col2:
-            panel_area = st.number_input("Area (m²)", min_value=0.1, max_value=10.0, 
-                                        value=1.7, key="custom_area")
-        with col3:
-            nominal_power = st.number_input("Nominal Power (W)", min_value=1.0, max_value=2000.0, 
-                                           value=400.0, key="custom_power")
-    else:
-        row = brands_df[brands_df["Brand"] == chosen_brand].iloc[0]
-        panel_efficiency = float(row["Efficiency (%)"])
-        panel_area = float(row["Area (m²)"])
-        nominal_power = float(row["Nominal Power (W)"])
-    
-    # System derate
-    derate = st.slider("System Derate Factor (accounts for losses)", min_value=0.5, max_value=1.0, 
-                       value=0.77, step=0.01, key="derate")
-    
-    # Override GHI option
-    override_ghi = st.checkbox("Override GHI for testing scenarios?", key="override_ghi")
-    if override_ghi:
-        ghi_value = st.number_input("Override GHI (W/m²)", min_value=0.0, value=800.0, key="override_ghi_val")
-    else:
-        ghi_value = st.session_state.predicted_ghi
-    
-    # Peak sun hours
-    st.subheader("Location Settings")
-    peak_sun_hours = st.slider("Average Peak Sun Hours per Day", min_value=2.0, max_value=8.0, 
-                               value=5.0, step=0.5, key="peak_hours",
-                               help="Typical solar insolation hours. Menlo Park avg: ~5 hours/day")
-    
-    # Calculate button
-    if st.button("Calculate Panels", key="calculate_btn"):
-        if ghi_value is None or ghi_value <= 0:
-            st.error("GHI value must be greater than 0.")
+
+    left, right = st.columns([1, 1])
+
+    # ── LEFT: all inputs ──────────────────────────────────────────────────
+    with left:
+        st.caption(f"GHI: **{st.session_state.predicted_ghi:.1f} W/m²**")
+
+        required_power = st.number_input("Required Power Output (W)", min_value=0.0,
+                                         max_value=1_000_000.0, value=800.0, key="required_power")
+
+        chosen_brand = st.selectbox("Panel brand", [b["Brand"] for b in brands], key="brand_select")
+
+        if chosen_brand == "Custom":
+            c1, c2, c3 = st.columns(3)
+            panel_efficiency = c1.number_input("Efficiency (%)", 0.0, 100.0, 18.0, key="custom_eff")
+            panel_area       = c2.number_input("Area (m²)",      0.1,  10.0,  1.7, key="custom_area")
+            nominal_power    = c3.number_input("Nominal W",       1.0, 2000.0, 400.0, key="custom_power")
         else:
-            try:
-                # Power per panel
-                power_per_panel = ghi_value * panel_area * (panel_efficiency / 100.0) * derate
-                
-                if power_per_panel <= 0:
-                    st.error("Computed power per panel is not positive. Check inputs.")
-                else:
-                    panels_needed = ceil(required_power / power_per_panel)
-                    total_panel_area = panels_needed * panel_area
-                    estimated_system_power = panels_needed * power_per_panel
-                    
-                    # Results
-                    st.divider()
-                    st.subheader("Results")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Panels Needed", panels_needed)
-                    with col2:
-                        st.metric("Total Panel Area", f"{total_panel_area:.2f} m²")
-                    with col3:
-                        st.metric("System Power", f"{estimated_system_power:.0f} W")
-                    
-                    st.markdown("**Calculation Details:**")
-                    st.write(f"- Power per panel at {ghi_value:.0f} W/m²: **{power_per_panel:.2f} W**")
-                    st.write(f"- Total panels needed: **{panels_needed}**")
-                    st.write(f"- Total system area: **{total_panel_area:.2f} m²**")
-                    st.write(f"- Estimated system power: **{estimated_system_power:.2f} W**")
-                    
-                    # Annual energy
-                    st.divider()
-                    st.subheader("Annual Energy Generation")
-                    
-                    energy_per_panel_year = (power_per_panel / 1000) * peak_sun_hours * 365
-                    total_system_energy = energy_per_panel_year * panels_needed
-                    
-                    st.metric("Annual System Energy", f"{total_system_energy:,.0f} kWh/year")
-                    
-                    st.markdown("**Energy Breakdown:**")
-                    st.write(f"- Energy per panel per year: {energy_per_panel_year:,.0f} kWh/year")
-                    st.write(f"- Total panels: {panels_needed}")
-                    st.write(f"- Peak sun hours/day: {peak_sun_hours}")
-                    
-                    # Savings
-                    st.divider()
-                    st.subheader("Financial Analysis")
-                    
-                    avg_electricity_rate = st.number_input("Local electricity rate ($/kWh)", 
-                                                           min_value=0.0, value=0.12, key="electricity_rate")
-                    annual_savings = total_system_energy * avg_electricity_rate
-                    
-                    st.metric("Estimated Annual Savings", f"${annual_savings:,.2f}", 
-                             delta=f"at ${avg_electricity_rate}/kWh")
-                    
-                    # Payback period estimate
-                    system_cost = st.number_input("Estimated system installation cost ($)", 
-                                                 min_value=0.0, value=8000.0, key="system_cost")
-                    
-                    if system_cost > 0 and annual_savings > 0:
-                        payback_years = system_cost / annual_savings
-                        st.write(f"**Estimated Payback Period: {payback_years:.1f} years**")
-                    
-            except Exception as e:
-                st.error(f"Calculation failed: {e}")
+            row = brands_df[brands_df["Brand"] == chosen_brand].iloc[0]
+            panel_efficiency = float(row["Efficiency (%)"])
+            panel_area       = float(row["Area (m²)"])
+            nominal_power    = float(row["Nominal Power (W)"])
+            st.caption(f"Efficiency {panel_efficiency}% · Area {panel_area} m² · {nominal_power:.0f} W nominal")
+
+        derate = st.slider("System Derate Factor", 0.5, 1.0, 0.77, 0.01, key="derate",
+                           help="Accounts for inverter, wiring, temperature losses. Typical: 0.77",
+                           disabled=True)
+
+        peak_sun_hours = st.slider("Peak Sun Hours / Day", 2.0, 8.0, 5.0, 0.5, key="peak_hours")
+
+        electricity_rate = st.number_input("Electricity rate ($/kWh)", 0.0, value=0.12, key="electricity_rate")
+        system_cost      = st.number_input("Installation cost ($)",     0.0, value=8000.0, key="system_cost")
+
+        override_ghi = st.checkbox("Override GHI", key="override_ghi")
+        ghi_value = (st.number_input("Override GHI (W/m²)", 0.0, value=800.0, key="override_ghi_val")
+                     if override_ghi else st.session_state.predicted_ghi)
+
+        if st.button("⚡ Calculate Panels", key="calculate_btn", use_container_width=True):
+            if not ghi_value or ghi_value <= 0:
+                st.error("GHI must be > 0.")
+            else:
+                try:
+                    ppp = ghi_value * panel_area * (panel_efficiency / 100.0) * derate
+                    if ppp <= 0:
+                        st.error("Power per panel ≤ 0 — check inputs.")
+                    else:
+                        n          = ceil(required_power / ppp)
+                        area_total = n * panel_area
+                        sys_power  = n * ppp
+                        e_per_year = (ppp / 1000) * peak_sun_hours * 365
+                        e_total    = e_per_year * n
+                        savings    = e_total * electricity_rate
+                        payback    = (system_cost / savings) if savings > 0 else None
+                        st.session_state.calc_results = {
+                            "ghi": ghi_value, "ppp": ppp, "n": n,
+                            "area_total": area_total, "sys_power": sys_power,
+                            "e_total": e_total, "e_per_year": e_per_year,
+                            "savings": savings, "payback": payback,
+                            "electricity_rate": electricity_rate,
+                        }
+                except Exception as e:
+                    st.error(f"Calculation failed: {e}")
+
+    # ── RIGHT: results ────────────────────────────────────────────────────
+    with right:
+        r = st.session_state.calc_results
+        if r is None:
+            st.info("Configure inputs on the left and click **Calculate Panels**.")
+        else:
+            st.markdown("#### Results")
+            # Row 1 — panel sizing
+            m1, m2 = st.columns(2)
+            m1.metric("Panels",       r["n"])
+            m2.metric("Array Area",   f"{r['area_total']:.1f} m²")
+            # Row 2 — power & energy
+            m3, m4 = st.columns(2)
+            m3.metric("System Power",  f"{r['sys_power']:.0f} W")
+            m4.metric("Annual Energy", f"{r['e_total']:,.0f} kWh")
+            # Row 3 — finance
+            m5, m6 = st.columns(2)
+            m5.metric("Annual Savings", f"${r['savings']:,.0f}")
+            m6.metric("Payback",        f"{r['payback']:.1f} yr" if r["payback"] else "—")
+            # Detail caption
+            st.caption(
+                f"Per-panel: {r['ppp']:.1f} W · {r['e_per_year']:,.0f} kWh/yr  |  "
+                f"GHI: {r['ghi']:.0f} W/m²  |  Rate: ${r['electricity_rate']}/kWh"
+            )
 
 
 # ============== PAGE: ABOUT ==============
